@@ -264,8 +264,8 @@
                     x: window.innerWidth / 3,
                     y: window.innerHeight / 2,
                     z: 20, r: 60, mass: 60 ** 3,
-                    glassColor: [0.95, 0.85, 0.95],
-                    pigmentColor: [1.0, 0.95, 0.6],
+                    glassColor: [0.95, 0.95, 0.95],
+                    pigmentColor: [1.0, 0.5, 0.6],
                     vx: 0, vy: 0, vz: 0, q: [1, 0, 0, 0],
                     matrix: [1, 0, 0, 0, 1, 0, 0, 0, 1],
                     isDragging: false
@@ -274,8 +274,8 @@
                     x: 2 * window.innerWidth / 3,
                     y: window.innerHeight / 2,
                     z: 20, r: 40, mass: 40 ** 3,
-                    glassColor: [0.95, 0.95, 0.85],
-                    pigmentColor: [0.95, 0.55, 1.0],
+                    glassColor: [0.95, 0.95, 0.95],
+                    pigmentColor: [0.3, 0.55, 1.0],
                     vx: 0, vy: 0, vz: 0, q: [1, 0, 0, 0],
                     matrix: [1, 0, 0, 0, 1, 0, 0, 0, 1],
                     isDragging: false
@@ -345,58 +345,121 @@
 
         // Bouncing, elastic collision, and rolling physics simulation
         function updatePhysics() {
+            // 1. Integration (Gravity, Movement, and Dragging)
             state.marbles.forEach(m => {
-                let dx = 0, dy = 0;
-
                 if (m.isDragging) {
                     const tx = state.mouseX - state.dragOffsetX;
                     const ty = state.mouseY - state.dragOffsetY;
-                    dx = tx - m.x; dy = ty - m.y;
-                    m.x = tx; m.y = ty; m.vx = dx; m.vy = dy;
-                    m.z += (380 - m.z) * 0.15;
-                    m.vz = 0;
+                    m.vx = tx - m.x; 
+                    m.vy = ty - m.y;
+                    m.x = tx; 
+                    m.y = ty;
+                    
+                    const targetZ = 200; // Lift off ground when dragged
+                    m.vz = (targetZ - m.z) * 0.15;
+                    m.z += m.vz;
                 } else {
-                    m.vx *= 0.98; m.vy *= 0.98;
-                    m.x += m.vx; m.y += m.vy;
-                    dx = m.vx; dy = m.vy;
+                    m.vz -= 0.8; // Gravity
+                    
+                    // Air/Rolling friction
+                    m.vx *= 0.985;
+                    m.vy *= 0.985;
+                    m.vz *= 0.99; 
 
-                    if (m.z > 20) {
-                        m.vz -= 0.6;
-                        m.z += m.vz;
-                        if (m.z < 20) { m.z = 20; m.vz *= -0.55; }
+                    m.x += m.vx;
+                    m.y += m.vy;
+                    m.z += m.vz;
+                }
+            });
+
+            // 2. Marble-Marble Collision Resolution
+            const [m1, m2] = state.marbles;
+            const dx = m1.x - m2.x, dy = m1.y - m2.y, dz = m1.z - m2.z;
+            const dist = Math.hypot(dx, dy, dz);
+            const minDist = m1.r + m2.r;
+
+            if (dist < minDist && dist > 0.0001) {
+                const nx = dx / dist, ny = dy / dist, nz = dz / dist;
+                const overlap = minDist - dist;
+
+                // Positional Correction: Push apart weighted by mass
+                const totalMass = m1.mass + m2.mass;
+                const m1Ratio = m2.mass / totalMass; // Heavier marble moves less
+                const m2Ratio = m1.mass / totalMass;
+
+                if (!m1.isDragging && !m2.isDragging) {
+                    m1.x += nx * overlap * m1Ratio; m1.y += ny * overlap * m1Ratio; m1.z += nz * overlap * m1Ratio;
+                    m2.x -= nx * overlap * m2Ratio; m2.y -= ny * overlap * m2Ratio; m2.z -= nz * overlap * m2Ratio;
+                } else if (!m1.isDragging) {
+                    m1.x += nx * overlap; m1.y += ny * overlap; m1.z += nz * overlap;
+                } else if (!m2.isDragging) {
+                    m2.x -= nx * overlap; m2.y -= ny * overlap; m2.z -= nz * overlap;
+                }
+
+                // Velocity Impulse: Standard 3D Elastic Collision
+                const relVx = m1.vx - m2.vx;
+                const relVy = m1.vy - m2.vy;
+                const relVz = m1.vz - m2.vz;
+                const velAlongNormal = relVx * nx + relVy * ny + relVz * nz;
+
+                // CRITICAL FIX: Only resolve if they are actively moving towards each other
+                if (velAlongNormal < 0) {
+                    const restitution = 0.8; // Bounciness
+                    const j = -(1 + restitution) * velAlongNormal / (1 / m1.mass + 1 / m2.mass);
+                    
+                    const impulseX = j * nx;
+                    const impulseY = j * ny;
+                    const impulseZ = j * nz;
+
+                    if (!m1.isDragging) {
+                        m1.vx += impulseX / m1.mass;
+                        m1.vy += impulseY / m1.mass;
+                        m1.vz += impulseZ / m1.mass;
+                    }
+                    if (!m2.isDragging) {
+                        m2.vx -= impulseX / m2.mass;
+                        m2.vy -= impulseY / m2.mass;
+                        m2.vz -= impulseZ / m2.mass;
+                    }
+                }
+            }
+
+            // 3. Environment Constraints (Must happen AFTER marble collisions)
+            state.marbles.forEach(m => {
+                if (!m.isDragging) {
+                    // Floor Collision
+                    if (m.z < m.r) { 
+                        m.z = m.r; 
+                        // CRITICAL FIX: Threshold to stop micro-bounces
+                        if (m.vz < -2.0) {
+                            m.vz *= -0.55; 
+                        } else {
+                            m.vz = 0; // True rest state
+                            m.vx *= 0.95; // Added ground friction
+                            m.vy *= 0.95;
+                        }
                     }
 
+                    // Wall Collisions
                     if (m.x < m.r) { m.x = m.r; m.vx *= -0.8; }
                     else if (m.x > window.innerWidth - m.r) { m.x = window.innerWidth - m.r; m.vx *= -0.8; }
+                    
                     if (m.y < m.r) { m.y = m.r; m.vy *= -0.8; }
                     else if (m.y > window.innerHeight - m.r) { m.y = window.innerHeight - m.r; m.vy *= -0.8; }
                 }
 
-                const dist = Math.hypot(dx, dy);
-                if (dist > 0.01) {
-                    const half = dist / m.r / 2;
-                    const c = Math.cos(half), s = Math.sin(half) / dist;
-                    m.q = qMul([c, -dy * s, dx * s, 0], m.q);
+                // 4. Visual Rolling (Quaternion Update)
+                const speedXY = Math.hypot(m.vx, m.vy);
+                if (speedXY > 0.01) {
+                    const angle = speedXY / m.r;
+                    const c = Math.cos(angle / 2);
+                    const s = Math.sin(angle / 2) / speedXY;
+                    
+                    // Your quaternion math is perfect here
+                    m.q = qMul([c, -m.vy * s, m.vx * s, 0], m.q);
                     m.matrix = qToMat(m.q);
                 }
             });
-
-            const [m1, m2] = state.marbles;
-            const dx = m1.x - m2.x, dy = m1.y - m2.y, dz = m1.z - m2.z;
-            const dist = Math.hypot(dx, dy, dz), minDist = m1.r + m2.r;
-
-            if (dist < minDist && dist > 0.01) {
-                const overlap = minDist - dist;
-                const nx = dx / dist, ny = dy / dist, nz = dz / dist;
-                const push = (m, f) => { m.x += nx * overlap * f; m.y += ny * overlap * f; m.z += nz * overlap * f; };
-
-                if (!m1.isDragging && !m2.isDragging) { push(m1, 0.5); push(m2, -0.5); }
-                else push(m1.isDragging ? m2 : m1, m1.isDragging ? -1 : 1);
-
-                const p = 2 * (nx * (m1.vx - m2.vx) + ny * (m1.vy - m2.vy) + nz * (m1.vz - m2.vz)) / (m1.mass + m2.mass);
-                if (!m1.isDragging) { m1.vx -= p * m2.mass * nx; m1.vy -= p * m2.mass * ny; m1.vz -= p * m2.mass * nz; }
-                if (!m2.isDragging) { m2.vx += p * m1.mass * nx; m2.vy += p * m1.mass * ny; m2.vz += p * m1.mass * nz; }
-            }
         }
 
         const displacementMap = document.getElementById('displacementMap');
