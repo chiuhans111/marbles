@@ -147,7 +147,7 @@
                 <feGaussianBlur in="displaceRefract" result="softDisplaceRefract" stdDeviation="1" />
 
                 <feDisplacementMap in="shadowedDOM" in2="softDisplaceRefract"
-                                   scale="100" xChannelSelector="R" yChannelSelector="G"
+                                   scale="200" xChannelSelector="R" yChannelSelector="G"
                                    result="refractedDom" />
 
                 <!-- <feComposite in="colorMap" in2="refractedDom" operator="over" result="finalOutput" /> -->
@@ -166,7 +166,7 @@
     <script type="x-shader/x-fragment" id="frag">
         #define MARBLE_COUNT 2
         #define ITERATIONS 4
-        #define DISPLACEMENT_SCALE 100.0
+        #define DISPLACEMENT_SCALE 200.0
         precision mediump float;
         uniform vec2 u_canvas_size;
         uniform vec2 u_viewport_size;
@@ -250,7 +250,7 @@
                     if(firstNormal.z==0.0) firstNormal = n;
                     float cosf = dot(rd, n);
                     vec3 sinvec = rd - cosf * n;
-                    float N = 1.5;
+                    float N = 1.1;
                     if (cosf > 0.0) N = 1.0/N;
                     else inside = true;
                     float cosf2 = N*N*dot(rd, rd) - dot(sinvec, sinvec);
@@ -348,8 +348,8 @@
             
             if(u_mode==0 || u_mode==1){
                 // pack displacement map.
-                rp += rd / rd.z * rp.z;
-                color.xy = (rp.xy - uv) / DISPLACEMENT_SCALE * vec2(-1.0, 1.0) + 0.5;
+                rp -= rd / rd.z * rp.z;
+                color.xy = -(rp.xy - uv) / DISPLACEMENT_SCALE * vec2(-1.0, 1.0) + 0.5;
                 color.a=1.0;
             }
 
@@ -634,8 +634,8 @@
                             m.vz *= -0.55;
                         } else {
                             m.vz = 0; // True rest state
-                            m.vx *= 0.95; // Added ground friction
-                            m.vy *= 0.95;
+                            m.vx *= 0.99; // Added ground friction
+                            m.vy *= 0.99;
                         }
                     }
 
