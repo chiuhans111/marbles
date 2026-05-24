@@ -9,7 +9,6 @@
         body {
             margin: 0;
             padding: 0;
-            background-color: #f0f0f0;
             overflow: hidden;
         }
 
@@ -18,6 +17,7 @@
             height: 100vh;
             display: flex;
             filter: url(#marble-filter);
+            background-color: #eeeeee;
         }
 
         #content {
@@ -58,17 +58,21 @@
     <svg style="position: absolute; width: 0; height: 0; pointer-events: none;" xmlns="http://www.w3.org/2000/svg">
         <defs>
             <filter id="marble-filter" x="0%" y="0%" width="100%" height="100%" color-interpolation-filters="sRGB">
-                <feImage id="displacementMap" result="displacementMap" preserveAspectRatio="none" />
+                <feImage id="displaceRefract" result="displaceRefract" preserveAspectRatio="none" />
+                <feImage id="displaceReflect" result="displaceReflect" preserveAspectRatio="none" />
                 <feImage id="shadowMap" result="shadowMap" preserveAspectRatio="none" />
                 <feImage id="colorMap" result="colorMap" preserveAspectRatio="none" />
 
-                <!-- 1. Multiply the shadow map onto the UN-DISTORTED original DOM -->
-                <feBlend in="shadowMap" in2="SourceGraphic" mode="multiply" result="shadowedDOM" />
+                <feGaussianBlur in="shadowMap" result="softShadowMap" stdDeviation="8" />
 
-                <!-- 2. Distort the shadowed DOM using the Red and Green channels of displacementMap -->
-                <feDisplacementMap in="shadowedDOM" in2="displacementMap"
-                                   scale="200" xChannelSelector="R" yChannelSelector="G"
-                                   result="finalOutput" />
+                <feBlend in="softShadowMap" in2="SourceGraphic" mode="multiply" result="shadowedDOM" />
+
+                <feDisplacementMap in="shadowedDOM" in2="displaceRefract"
+                                   scale="300" xChannelSelector="R" yChannelSelector="G"
+                                   result="refractedDom" />
+
+                <feComposite in="colorMap" in2="refractedDom" mode="over" result="finalOutput" />
+
             </filter>
         </defs>
     </svg>
@@ -82,24 +86,39 @@
 
     <script type="x-shader/x-fragment" id="frag">
         #define MARBLE_COUNT 2
-        #define ITERATIONS 2
-        #define DISPLACEMENT_SCALE 100.0
-        #define SCALE 0.1
+        #define ITERATIONS 4
+        #define DISPLACEMENT_SCALE 300.0
         precision mediump float;
         uniform vec2 u_canvas_size;
+        uniform vec2 u_viewport_size;
         uniform vec3 u_marble_positions[MARBLE_COUNT];
         uniform mat3 u_marble_matrices[MARBLE_COUNT];
         uniform float u_marble_radii[MARBLE_COUNT];
         uniform vec3 u_glass_colors[MARBLE_COUNT];
-        uniform vec3 u_pigment_colors[MARBLE_COUNT];
+        uniform vec3 u_core_colors[MARBLE_COUNT];
         uniform int u_mode;
-
+        // Modes:
+        // 0: displacement map for refraction
+        // 1: displacement map for reflection
 
         void main() {
-            vec4 color = vec4(0);
 
-            vec3 rp = vec3(gl_FragCoord.xy*SCALE, 50);
+         
+            vec4 color = vec4(1.0);
+
+            if(u_mode==2){
+                color.a = 0.0;
+            }
+            
+            vec2 uv = gl_FragCoord.xy/u_viewport_size*u_canvas_size;
+            vec3 rp = vec3(uv, 1000);
             vec3 rd = vec3(0, 0, -1);
+            vec3 lastEntry = rp;
+
+            if(u_mode==3){
+                rp = vec3(uv, 0);
+                rd = vec3(1, 1, 1);
+            }
 
             for(int iteration=0;iteration<ITERATIONS;iteration++){
 
@@ -109,12 +128,14 @@
                 vec3 yvec = vec3(0, 0, -1);
                 vec3 zvec = vec3(0, 1, 0);
                 vec3 glassColor = vec3(1.0);
-                vec3 pigmentColor = vec3(0.0);
-                float R = 50.0 * SCALE;
+                vec3 coreColor = vec3(0.0);
+                float R = 50.0;
+                float volume = 0.0;
+
 
                 for(int marble_id=0;marble_id<MARBLE_COUNT;marble_id++){
-                    vec3 o = u_marble_positions[marble_id]*SCALE;
-                    float radius_val = u_marble_radii[marble_id]*SCALE;
+                    vec3 o = u_marble_positions[marble_id];
+                    float radius_val = u_marble_radii[marble_id];
                     vec3 d = rp - o;
                     float a = dot(rd, rd);
                     float a_inv_2 = 1.0/2.0/a;
@@ -135,7 +156,7 @@
                             yvec = u_marble_matrices[marble_id][1];
                             zvec = u_marble_matrices[marble_id][2];
                             glassColor = u_glass_colors[marble_id];
-                            pigmentColor = u_pigment_colors[marble_id];
+                            coreColor = u_core_colors[marble_id];
                         }
                     }
                 }
@@ -157,65 +178,89 @@
                         rd = sinvec - n * cosf;
                     }
                     rd = normalize(rd);
-                }
 
-                // Inside the marble
-                f_min=-1.0;
-                
-                if(inside){
-                    float A = 1.0; // 0.0 = flat plane, > 0.0 = parabola
-                    float B = 0.2; // 0.0 = flat plane, > 0.0 = parabola
+                    // Inside the marble
+                    f_min=-1.0;
+                    
+                    if(inside){
+                        // Ray trace the core.
+                        lastEntry = rp;
+                        float A = 0.2; // 0.0 = flat plane, > 0.0 = parabola
+                        float B = 0.2; // 0.0 = flat plane, > 0.0 = parabola
 
-                    float rdx = dot(rd, xvec) / R;
-                    float rdy = dot(rd, yvec);
-                    float rpx = dot(rp - o_min, xvec) / R;
-                    float rpy = dot(rp - o_min, yvec);
+                        float rdx = dot(rd, xvec) / R;
+                        float rdy = dot(rd, yvec) / R;
+                        float rpx = dot(rp - o_min, xvec) / R;
+                        float rpy = dot(rp - o_min, yvec) / R;
 
-                    float a = A * (rdx * rdx);
-                    float b = 2.0 * A * rpx * rdx - rdy;
-                    float c = A * (rpx * rpx - 1.0) - rpy;
+                        float a = A * (rdx * rdx);
+                        float b = 2.0 * A * rpx * rdx - rdy;
+                        float c = A * (rpx * rpx - 1.0) - rpy;
 
-                    float D = b * b - 4.0 * a * c;
+                        float D = b * b - 4.0 * a * c;
 
-                    vec3 n = vec3(0);
+                        vec3 n = vec3(0);
 
-                    if (D >= 0.0) {
-                        float sqrtD = sqrt(D);
-                        float den1 = -b - sqrtD;
-                        float den2 = -b + sqrtD;
-                        float f1 = (2.0 * c) / den1;
-                        float f2 = (abs(den2) > 0.0001) ? (2.0 * c) / den2 : -1.0;
-                        float f = f1;
-                        if (f2 > 0.0 && f2 < f) f = f2;
-                        if (f > 0.01 && (f < f_min || f_min < 0.0)) {
-                            vec3 relative_hit_pos = rp + rd * f - o_min;
-                            if ( abs(dot(relative_hit_pos, zvec)) < (1.0 - rpx*rpx) * B * R) {
-                                f_min = f;
-                                float hit_x = dot(relative_hit_pos, xvec);
-                                n = normalize((2.0 * A * hit_x / (R * R)) * xvec - yvec);
+                        if (D >= 0.0) {
+                            float sqrtD = sqrt(D);
+                            float den1 = -b - sqrtD;
+                            float f = (2.0 * c) / den1;
+                            if (f > 0.001 && (f < f_min || f_min < 0.0)) {
+                                vec3 relative_hit_pos = rp + rd * f - o_min;
+                                float hit_x = dot(relative_hit_pos, xvec) / R;
+                                if (abs(hit_x) <= 1.0 && abs(dot(relative_hit_pos, zvec)) < (1.0 - hit_x*hit_x) * B * R) {
+                                    f_min = f;
+                                    float hit_x = dot(relative_hit_pos, xvec);
+                                    n = normalize((2.0 * A * hit_x) * xvec - yvec);
+                                }
+                                // color.x = fract(0.2*dot(relative_hit_pos, zvec));
+                                // color.y = fract(0.2*dot(relative_hit_pos, xvec));
+                            }
+                            float den2 = -b + sqrtD;
+                            f = (abs(den2) > 0.0001) ? (2.0 * c) / den2 : -1.0;
+                            if (f > 0.001 && (f < f_min || f_min < 0.0)) {
+                                vec3 relative_hit_pos = rp + rd * f - o_min;
+                                float hit_x = dot(relative_hit_pos, xvec) / R;
+                                if (abs(hit_x) <= 1.0 && abs(dot(relative_hit_pos, zvec)) < (1.0 - hit_x*hit_x) * B * R) {
+                                    f_min = f;
+                                    float hit_x = dot(relative_hit_pos, xvec);
+                                    n = normalize((2.0 * A * hit_x) * xvec - yvec);
+                                }
                             }
                         }
                     }
 
-                    // Base glass color
-                    color.rgb = glassColor;
-                    color.a = 1.0;
-
                     if(f_min>0.0){
-                        float density = abs(dot(rd, n));
-                        color.rgb = mix(glassColor, pigmentColor, density);
+                        color.rgb = mix(color.rgb, coreColor, abs(dot(rd, n)));
+                        color.a = 1.0;
+                        inside = false;
+                        rp = rp + rd * f_min;
+                    }
+
+                    if(!inside){
+                        volume = distance(lastEntry, rp)*0.01;
+                    }
+
+
+                    float alpha = 0.0;
+                    if(volume>0.0){
+                        color.r *= pow(glassColor.r, volume);
+                        color.g *= pow(glassColor.g, volume);
+                        color.b *= pow(glassColor.b, volume);
+                        color.a = 1.0-(1.0 - color.a)*exp(-volume);
                     }
                 }
-
             }
 
             
-            if(u_mode==0){
-                rp = rd / rd.z * rp.z + rp;
-                color.xy = (rp.xy - gl_FragCoord.xy*SCALE) / DISPLACEMENT_SCALE + 0.5;
+            if(u_mode==0 || u_mode==1){
+                // pack displacement map.
+                rp += rd / rd.z * rp.z;
+                color.xy = (rp.xy - uv) / DISPLACEMENT_SCALE * vec2(-1.0, 1.0) + 0.5;
                 color.a=1.0;
             }
 
+            
             gl_FragColor = color;
         }
     </script>
@@ -255,15 +300,14 @@
         gl.vertexAttribPointer(a_position, 2, gl.FLOAT, false, 0, 0);
 
         // Declare uniform Locations
-        const u_resolution = gl.getUniformLocation(program, 'u_canvas_size');
+        const u_canvas_size = gl.getUniformLocation(program, 'u_canvas_size');
+        const u_viewport_size = gl.getUniformLocation(program, 'u_viewport_size');
         const u_marble_positions = gl.getUniformLocation(program, 'u_marble_positions');
         const u_marble_matrices = gl.getUniformLocation(program, 'u_marble_matrices');
         const u_marble_radii = gl.getUniformLocation(program, 'u_marble_radii');
         const u_glass_colors = gl.getUniformLocation(program, 'u_glass_colors');
-        const u_pigment_colors = gl.getUniformLocation(program, 'u_pigment_colors');
+        const u_core_colors = gl.getUniformLocation(program, 'u_core_colors');
         const u_mode = gl.getUniformLocation(program, 'u_mode');
-
-
 
         // State Tracking (Identity matrix & tunable properties)
         const state = {
@@ -272,8 +316,8 @@
                     x: window.innerWidth / 3,
                     y: window.innerHeight / 2,
                     z: 20, r: 60, mass: 60 ** 3,
-                    glassColor: [0.95, 0.95, 0.95],
-                    pigmentColor: [1.0, 0.5, 0.6],
+                    glassColor: [0.95, 0.95, 0.5],
+                    coreColor: [1.0, 0.5, 0.6],
                     vx: 0, vy: 0, vz: 0, q: [1, 0, 0, 0],
                     matrix: [1, 0, 0, 0, 1, 0, 0, 0, 1],
                     isDragging: false
@@ -282,21 +326,21 @@
                     x: 2 * window.innerWidth / 3,
                     y: window.innerHeight / 2,
                     z: 20, r: 40, mass: 40 ** 3,
-                    glassColor: [0.95, 0.95, 0.95],
-                    pigmentColor: [0.3, 0.55, 1.0],
+                    glassColor: [0.5, 0.95, 0.95],
+                    coreColor: [0.3, 0.55, 1.0],
                     vx: 0, vy: 0, vz: 0, q: [1, 0, 0, 0],
                     matrix: [1, 0, 0, 0, 1, 0, 0, 0, 1],
                     isDragging: false
                 }
             ],
             mouseX: 0, mouseY: 0, draggedIdx: -1, dragOffsetX: 0, dragOffsetY: 0,
-            settleFrames: 10
+            settleFrames: 10, width: 512, height: 512
         };
 
         // Resize Tracking.
         function resize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
+            state.width = window.innerWidth;
+            state.height = window.innerHeight;
         }
         window.addEventListener('resize', resize);
         resize();
@@ -464,13 +508,16 @@
                     const c = Math.cos(angle / 2);
                     const s = Math.sin(angle / 2) / speedXY;
 
-                    m.q = qMul([c, -m.vy * s, m.vx * s, 0], m.q);
+                    // m.q = qMul([c, -m.vy * s, m.vx * s, 0], m.q);
+                    m.q = qMul([c, -m.vy * s, -m.vx * s, 0], m.q);
                     m.matrix = qToMat(m.q);
                 }
             });
         }
 
-        const displacementMap = document.getElementById('displacementMap');
+        const displaceRefract = document.getElementById('displaceRefract');
+        const displaceReflect = document.getElementById('displaceReflect');
+        const colorMap = document.getElementById('colorMap');
         const shadowMap = document.getElementById('shadowMap');
 
 
@@ -480,21 +527,20 @@
             updatePhysics();
 
 
-            gl.uniform2f(u_resolution, canvas.width, canvas.height);
-
-            const pos = [], radii = [], glass = [], pigment = [], mats = new Float32Array(18);
+            const pos = [], radii = [], glass = [], core = [], mats = new Float32Array(18);
             state.marbles.forEach((m, i) => {
                 pos.push(m.x, window.innerHeight - m.y, m.z);
                 radii.push(m.r);
                 glass.push(...m.glassColor);
-                pigment.push(...m.pigmentColor);
+                core.push(...m.coreColor);
                 mats.set(m.matrix, i * 9);
             });
 
+            gl.uniform2f(u_canvas_size, state.width, state.height);
             gl.uniform3fv(u_marble_positions, new Float32Array(pos));
             gl.uniform1fv(u_marble_radii, new Float32Array(radii));
             gl.uniform3fv(u_glass_colors, new Float32Array(glass));
-            gl.uniform3fv(u_pigment_colors, new Float32Array(pigment));
+            gl.uniform3fv(u_core_colors, new Float32Array(core));
             gl.uniformMatrix3fv(u_marble_matrices, false, mats);
 
 
@@ -513,18 +559,55 @@
                 isMoving = true;
             }
 
-            gl.viewport(0, 0, canvas.width, canvas.height);
             gl.clearColor(0, 0, 0, 0);
+
+
+            let renderWidth = Math.round(state.width);
+            let renderHeight = Math.round(state.height);
+            canvas.width = renderWidth;
+            canvas.height = renderHeight;
+            gl.uniform2f(u_viewport_size, canvas.width, canvas.height);
+            gl.viewport(0, 0, canvas.width, canvas.height);
+
+
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            gl.uniform1i(u_mode, 2);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+            colorMap.setAttributeNS('http://www.w3.org/1999/xlink', 'href', canvas.toDataURL('image/png'));
+
+
+            renderWidth = Math.round(state.width / 2);
+            renderHeight = Math.round(state.height / 2);
+            canvas.width = renderWidth;
+            canvas.height = renderHeight;
+            gl.uniform2f(u_viewport_size, canvas.width, canvas.height);
+            gl.viewport(0, 0, canvas.width, canvas.height);
+
+
             gl.clear(gl.COLOR_BUFFER_BIT);
             gl.uniform1i(u_mode, 0);
             gl.drawArrays(gl.TRIANGLES, 0, 3);
-            displacementMap.setAttributeNS('http://www.w3.org/1999/xlink', 'href', canvas.toDataURL('image/png'));
+            displaceRefract.setAttributeNS('http://www.w3.org/1999/xlink', 'href', canvas.toDataURL('image/png'));
 
-            // Render offscreen Mode 2 (Shadow Map)
+            // gl.clear(gl.COLOR_BUFFER_BIT);
+            // gl.uniform1i(u_mode, 0);
+            // gl.drawArrays(gl.TRIANGLES, 0, 3);
+            // displaceReflect.setAttributeNS('http://www.w3.org/1999/xlink', 'href', canvas.toDataURL('image/png'));
+
+
+            renderWidth = Math.round(state.width / 4);
+            renderHeight = Math.round(state.height / 4);
+            canvas.width = renderWidth;
+            canvas.height = renderHeight;
+            gl.uniform2f(u_viewport_size, canvas.width, canvas.height);
+            gl.viewport(0, 0, canvas.width, canvas.height);
+
+            gl.clearColor(0, 0, 0, 0);
             gl.clear(gl.COLOR_BUFFER_BIT);
-            gl.uniform1i(u_mode, 1);
+            gl.uniform1i(u_mode, 3);
             gl.drawArrays(gl.TRIANGLES, 0, 3);
             shadowMap.setAttributeNS('http://www.w3.org/1999/xlink', 'href', canvas.toDataURL('image/png'));
+
 
             requestAnimationFrame(loop);
         }
