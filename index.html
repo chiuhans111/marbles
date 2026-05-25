@@ -724,14 +724,14 @@
             feImage.setAttributeNS('http://www.w3.org/1999/xlink', 'href', dataurl);
         }
 
-        function renderAndMapPass(destCanvas, destCtx, feImage, mode, quality) {
+        function renderAndMapPass(destCanvas, destCtx, feImage, mode, type, quality) {
             gl.uniform2f(u_viewport_size, destCanvas.width, destCanvas.height);
             gl.viewport(0, 0, destCanvas.width, destCanvas.height);
             gl.clear(gl.COLOR_BUFFER_BIT);
             gl.uniform1i(u_mode, mode);
             gl.drawArrays(gl.TRIANGLES, 0, 3);
             destCtx.drawImage(canvas, 0, canvas.height - destCanvas.height, destCanvas.width, destCanvas.height, 0, 0, destCanvas.width, destCanvas.height);
-            updateFeImageWithCanvas(feImage, destCanvas, 'image/jpeg', quality);
+            updateFeImageWithCanvas(feImage, destCanvas, type, quality);
         }
 
         // Render Loop
@@ -773,13 +773,13 @@
                 gl.clearColor(0, 0, 0, 0);
 
                 // Pass 0: Refraction displacement (half resolution)
-                renderAndMapPass(canvasRefract, ctxRefract, displaceRefract, 0, 1.0);
+                renderAndMapPass(canvasRefract, ctxRefract, displaceRefract, 0, 'image/png', 1.0);
 
                 // Pass 1: Reflection displacement (quarter resolution)
-                renderAndMapPass(canvasReflect, ctxReflect, displaceReflect, 1, 0.75);
+                renderAndMapPass(canvasReflect, ctxReflect, displaceReflect, 1, 'image/png', 1.0);
 
                 // Pass 3: Shadow Map (quarter resolution)
-                renderAndMapPass(canvasShadow, ctxShadow, shadowMap, 3, 0.75);
+                renderAndMapPass(canvasShadow, ctxShadow, shadowMap, 3, 'image/jpeg', 0.7);
 
                 // Pass 2: Final Overlay (full resolution)
                 gl.uniform2f(u_viewport_size, canvas.width, canvas.height);
