@@ -115,6 +115,8 @@
 
 <body>
     <div id="container">
+        <!-- Background color layer captured by the SVG filter SourceGraphic -->
+        <div style="position: absolute; inset: 0; background-color: #f7f5f0; z-index: 1;"></div>
         <!-- Interactive Background Elements -->
         <div class="bg-glow bg-glow-1"></div>
         <div class="bg-glow bg-glow-2"></div>
@@ -154,7 +156,7 @@
                                values="0 0 0 0 0
                                        0 0 0 0 0
                                        0 0 0 0 0
-                                       0 0 1 0 0"
+                                       0 0 1.5 0 0"
                                result="fresnelMask" />
 
                 <feComposite in="reflectedDomBlur" in2="fresnelMask" operator="in" result="maskedReflection" />
@@ -267,7 +269,7 @@
                     if(firstNormal.z==0.0) {
                         firstNormal = n;
                         float cosTheta = max(dot(n, -rd), 0.0);
-                        fresnelVal = 0.05 + 0.95 * pow(1.0 - cosTheta, 3.0);
+                        fresnelVal = 0.05 + 0.95 * pow(1.0 - cosTheta, 2.0);
                     }
                     float cosf = dot(rd, n);
                     vec3 sinvec = rd - cosf * n;
@@ -275,7 +277,18 @@
                     if (cosf > 0.0) {
                         N = 1.0/N;
                         if (u_mode == 2) {
-                            specBack += pow(max(dot(reflect(rd, n), -LIGHT_DIR), 0.0), 12.0) * 0.06;
+                            specBack += pow(max(dot(reflect(rd, n), LIGHT_DIR), 0.0), 16.0) * 0.12;
+                        }
+
+                        // Ray trace the internal bubble (ultra-simple dot approximation)
+                        vec3 bubble_local = vec3(0.20, 0.35, -0.15);
+                        vec3 bubble_center = o_min + (xvec * bubble_local.x + yvec * bubble_local.y + zvec * bubble_local.z) * R;
+                        vec3 to_center = bubble_center - (rp - rd * f_min);
+                        float proj = dot(to_center, rd);
+                        vec3 to_ray = to_center - proj * rd;
+                        if (proj > 0.01 && proj < f_min && dot(to_ray, to_ray) < 0.002 * R * R) {
+                            float b_dot = dot(to_ray, LIGHT_DIR) / (0.045 * R);
+                            color.rgb += 0.25 * b_dot; // Simple bright/dark shading
                         }
                     }
                     else inside = true;
@@ -368,9 +381,9 @@
                     float spec = 0.0;
                     if(u_mode == 2) {
                         vec3 H = normalize(-firstRayDirection + LIGHT_DIR);
-                        spec = pow(max(dot(firstNormal, H), 0.0), 24.0) * 0.12; // Scaled down to not be too bright
-                        spec += specBack; // Physically correct back-side reflection
-                        spec += pow(1.0 - cosTheta, 4.0) * 0.12; // Fresnel rim scaled down
+                        spec = pow(max(dot(firstNormal, H), 0.0), 96.0) * 0.15; // Sharper, more refined front highlight
+                        spec += specBack; // Correct opposite-side internal reflection
+                        spec += pow(1.0 - cosTheta, 4.0) * 0.1; // Soft Fresnel rim highlight
                     } else {
                         spec = pow(cosTheta, 3.0) * 0.1;
                     }
