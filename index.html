@@ -19,6 +19,7 @@
             height: 100vh;
             display: flex;
             filter: url(#marble-filter);
+            background-color: #f7f5f0;
             overflow: hidden;
         }
 
@@ -134,16 +135,10 @@
                 <feImage id="displaceRefract" result="displaceRefract" preserveAspectRatio="none" />
                 <feImage id="displaceReflect" result="displaceReflect" preserveAspectRatio="none" />
                 <feImage id="shadowMap" result="shadowMap" preserveAspectRatio="none" />
-                <feImage id="colorMap" result="colorMap" preserveAspectRatio="none" />
 
                 <feGaussianBlur in="shadowMap" result="softShadowMap" stdDeviation="8" />
 
                 <feBlend in="softShadowMap" in2="SourceGraphic" mode="multiply" result="shadowedDOM" />
-                <!-- <feComposite in="softShadowMap" in2="SourceGraphic"
-                             operator="arithmetic"
-                             k1="1" k2="0" k3="0" k4="0"
-                             result="shadowedDOM" /> -->
-
 
                 <feDisplacementMap in="shadowedDOM" in2="displaceRefract"
                                    scale="200" xChannelSelector="R" yChannelSelector="G"
@@ -154,9 +149,6 @@
                                    result="reflectedDom" />
 
                 <feGaussianBlur in="reflectedDom" result="reflectedDomBlur" stdDeviation="2" />
-
-                <!-- <feComposite in="colorMap" in2="refractedDom" operator="over" result="colored" /> -->
-                <!-- <feBlend in="colorMap" in2="refractedDom" operator="overlay" result="colored" /> -->
 
                 <feColorMatrix in="displaceReflect" type="matrix"
                                values="0 0 0 0 0
@@ -200,6 +192,10 @@
         // Modes:
         // 0: displacement map for refraction
         // 1: displacement map for reflection
+        // 2: color and specular overlay
+        // 3: shadow map pass
+
+        #define LIGHT_DIR vec3(-0.57735027, 0.57735027, 0.57735027)
 
         void main() {
             vec4 color = vec4(1.0);
@@ -215,7 +211,7 @@
 
             if(u_mode==3){
                 rp = vec3(uv, 0);
-                rd = normalize(vec3(-1.0, 1.0, 1.0));
+                rd = LIGHT_DIR;
             }
 
             vec3 firstNormal = vec3(0);
@@ -279,8 +275,7 @@
                     if (cosf > 0.0) {
                         N = 1.0/N;
                         if (u_mode == 2) {
-                            vec3 L = normalize(vec3(-1.0, 1.0, 1.0));
-                            specBack += pow(max(dot(reflect(rd, n), -L), 0.0), 12.0) * 0.06;
+                            specBack += pow(max(dot(reflect(rd, n), -LIGHT_DIR), 0.0), 12.0) * 0.06;
                         }
                     }
                     else inside = true;
@@ -325,11 +320,8 @@
                                 float hit_x = dot(relative_hit_pos, xvec) / R;
                                 if (abs(hit_x) <= 1.0 && abs(dot(relative_hit_pos, zvec)) < (1.0 - hit_x*hit_x) * B * R) {
                                     f_min = f;
-                                    float hit_x = dot(relative_hit_pos, xvec);
                                     n = normalize((2.0 * A * hit_x) * xvec - yvec);
                                 }
-                                // color.x = fract(0.2*dot(relative_hit_pos, zvec));
-                                // color.y = fract(0.2*dot(relative_hit_pos, xvec));
                             }
                             float den2 = -b + sqrtD;
                             f = (abs(den2) > 0.0001) ? (2.0 * c) / den2 : -1.0;
@@ -338,7 +330,6 @@
                                 float hit_x = dot(relative_hit_pos, xvec) / R;
                                 if (abs(hit_x) <= 1.0 && abs(dot(relative_hit_pos, zvec)) < (1.0 - hit_x*hit_x) * B * R) {
                                     f_min = f;
-                                    float hit_x = dot(relative_hit_pos, xvec);
                                     n = normalize((2.0 * A * hit_x) * xvec - yvec);
                                 }
                             }
@@ -376,8 +367,7 @@
                     float cosTheta = max(dot(firstNormal, -firstRayDirection), 0.0);
                     float spec = 0.0;
                     if(u_mode == 2) {
-                        vec3 L = normalize(vec3(-1.0, 1.0, 1.0));
-                        vec3 H = normalize(-firstRayDirection + L);
+                        vec3 H = normalize(-firstRayDirection + LIGHT_DIR);
                         spec = pow(max(dot(firstNormal, H), 0.0), 24.0) * 0.12; // Scaled down to not be too bright
                         spec += specBack; // Physically correct back-side reflection
                         spec += pow(1.0 - cosTheta, 4.0) * 0.12; // Fresnel rim scaled down
@@ -728,7 +718,6 @@
                     const angle = speedXY / m.r;
                     const c = Math.cos(angle / 2);
                     const s = Math.sin(angle / 2) / speedXY;
-                    // m.q = qMul([c, -m.vy * s, m.vx * s, 0], m.q);
                     m.q = qMul([c, m.vy * s, m.vx * s, 0], m.q);
                     m.matrix = qToMat(m.q);
                 }
@@ -737,7 +726,6 @@
 
         const displaceRefract = document.getElementById('displaceRefract');
         const displaceReflect = document.getElementById('displaceReflect');
-        const colorMap = document.getElementById('colorMap');
         const shadowMap = document.getElementById('shadowMap');
 
         const MARBLE_COUNT = 2;
@@ -763,7 +751,6 @@
         }
 
         // Render Loop
-        let frameCount = 0;
         function loop(now) {
             updatePhysics();
 
@@ -815,7 +802,6 @@
                 gl.clear(gl.COLOR_BUFFER_BIT);
                 gl.uniform1i(u_mode, 2);
                 gl.drawArrays(gl.TRIANGLES, 0, 3);
-                // updateFeImageWithCanvas(colorMap, canvas, 'image/png', 1.0)
             }
 
             requestAnimationFrame(loop);
