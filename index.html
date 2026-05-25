@@ -22,20 +22,25 @@
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://chiuhans111.github.io/marbles/">
     <meta property="og:title" content="Marbles!">
-    <meta property="og:description" content="Interactive 3D WebGL refraction glass marbles simulation with physical collisions and real-time SVG distortion mapping.">
+    <meta property="og:description"
+          content="Interactive 3D WebGL refraction glass marbles simulation with physical collisions and real-time SVG distortion mapping.">
     <meta property="og:image" content="https://chiuhans111.github.io/marbles/cover.jpg">
 
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:url" content="https://chiuhans111.github.io/marbles/">
     <meta property="twitter:title" content="Marbles!">
-    <meta property="twitter:description" content="Interactive 3D WebGL refraction glass marbles simulation with physical collisions and real-time SVG distortion mapping.">
+    <meta property="twitter:description"
+          content="Interactive 3D WebGL refraction glass marbles simulation with physical collisions and real-time SVG distortion mapping.">
     <meta property="twitter:image" content="https://chiuhans111.github.io/marbles/cover.jpg">
 
     <!-- Favicon / Manifest Links -->
-    <link rel="apple-touch-icon" sizes="180x180" href="https://chiuhans111.github.io/marbles/favicon_io/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="https://chiuhans111.github.io/marbles/favicon_io/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="https://chiuhans111.github.io/marbles/favicon_io/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180"
+          href="https://chiuhans111.github.io/marbles/favicon_io/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32"
+          href="https://chiuhans111.github.io/marbles/favicon_io/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16"
+          href="https://chiuhans111.github.io/marbles/favicon_io/favicon-16x16.png">
     <link rel="manifest" href="https://chiuhans111.github.io/marbles/favicon_io/site.webmanifest">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -49,10 +54,18 @@
             font-family: 'Outfit', system-ui, -apple-system, sans-serif;
         }
 
-        #container {
+        #app-wrapper {
             position: relative;
             width: 100vw;
             height: 100vh;
+            overflow: hidden;
+        }
+
+        #container {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
             display: flex;
             filter: url(#marble-filter);
             background-color: #f7f5f0;
@@ -160,30 +173,39 @@
 </head>
 
 <body>
-    <div id="container">
-        <!-- Background color layer captured by the SVG filter SourceGraphic -->
-        <div style="position: absolute; inset: 0; background-color: #e4e4e4; z-index: 1; pointer-events: none;"></div>
-        <!-- Interactive Background Elements -->
-        <div class="bg-glow bg-glow-1"></div>
-        <div class="bg-glow bg-glow-2"></div>
-        <div class="bg-shape bg-shape-1"></div>
-        <div class="bg-shape bg-shape-2"></div>
+    <div id="app-wrapper">
+        <div id="container">
+            <!-- Background color layer captured by the SVG filter SourceGraphic -->
+            <div style="position: absolute; inset: 0; background-color: #e4e4e4; z-index: 1; pointer-events: none;">
+            </div>
+            <!-- Interactive Background Elements -->
+            <div class="bg-glow bg-glow-1"></div>
+            <div class="bg-glow bg-glow-2"></div>
+            <div class="bg-shape bg-shape-1"></div>
+            <div class="bg-shape bg-shape-2"></div>
 
-        <!-- Main Content Layer -->
-        <div id="content">
-            <h1>Glass Marbles!</h1>
-            <p>Drag the glass marbles around!</p>
-            <p>A demo by <a href="https://x.com/chiu_hans" target="_blank">Hans Chiu</a></p>
+            <!-- Main Content Layer -->
+            <div id="content">
+                <h1>Glass Marbles!</h1>
+                <p>Drag the glass marbles around!</p>
+                <p>A demo by <a href="https://x.com/chiu_hans" target="_blank">Hans Chiu</a></p>
+            </div>
         </div>
+
+        <canvas id="canvas"
+                style="pointer-events: none; position: absolute;
+                 left: 0; top: 0; width: 100%; height: 100%; z-index: 10;"></canvas>
     </div>
 
     <!-- SVG Filter Definition -->
-    <svg style="position: absolute; width: 0; height: 0; pointer-events: none;" xmlns="http://www.w3.org/2000/svg">
+    <svg style="position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none;"
+         xmlns="http://www.w3.org/2000/svg">
         <defs>
-            <filter id="marble-filter" x="0%" y="0%" width="100%" height="100%" color-interpolation-filters="sRGB">
-                <feImage id="displaceRefract" result="displaceRefract" preserveAspectRatio="none" />
-                <feImage id="displaceReflect" result="displaceReflect" preserveAspectRatio="none" />
-                <feImage id="shadowMap" result="shadowMap" preserveAspectRatio="none" />
+            <filter id="marble-filter" x="0" y="0" width="100%" height="100%" filterUnits="userSpaceOnUse"
+                    color-interpolation-filters="sRGB">
+                <feImage id="displaceRefract" result="displaceRefract" x="0" y="0" preserveAspectRatio="none" />
+                <feImage id="displaceReflect" result="displaceReflect" x="0" y="0" preserveAspectRatio="none" />
+                <feImage id="shadowMap" result="shadowMap" x="0" y="0" preserveAspectRatio="none" />
 
                 <feGaussianBlur in="shadowMap" result="softShadowMap" stdDeviation="8" />
 
@@ -209,6 +231,9 @@
                 <feComposite in="reflectedDomBlur" in2="fresnelMask" operator="in" result="maskedReflection" />
 
                 <feComposite in="maskedReflection" in2="refractedDom" operator="over" result="finalOutput" />
+
+                <!-- <feComposite in="displaceRefract" in2="finalOutput" operator="over" result="debugOutput" /> -->
+
             </filter>
         </defs>
     </svg>
@@ -226,10 +251,15 @@
     </script>
 
     <script type="x-shader/x-fragment" id="frag">
+        #ifdef GL_FRAGMENT_PRECISION_HIGH
+            precision highp float;
+        #else
+            precision mediump float;
+        #endif
+        
         #define MARBLE_COUNT 2
         #define ITERATIONS 4
         #define DISPLACEMENT_SCALE 200.0
-        precision mediump float;
         uniform vec2 u_canvas_size;
         uniform vec2 u_viewport_size;
         uniform vec3 u_marble_positions[MARBLE_COUNT];
@@ -560,19 +590,53 @@
                 });
             }
 
-            // Keep main canvas size set to full resolution (clamped to 2048)
+            // Dynamically size the app wrapper to match the exact window inner dimensions
+            const appWrapper = document.getElementById('app-wrapper');
+            if (appWrapper) {
+                appWrapper.style.width = `${newWidth}px`;
+                appWrapper.style.height = `${newHeight}px`;
+            }
+
+
+            const dpr = window.devicePixelRatio || 1;
+
+            // Keep main canvas size set to scaled resolution (state.width / dpr)
+            // This reduces the texture resolution on smartphones with high DPR to optimize performance without notice.
             canvas.width = Math.min(Math.round(state.width), 2048);
             canvas.height = Math.min(Math.round(state.height), 2048);
 
-            // Set helper canvas sizes once on resize
-            canvasRefract.width = Math.min(Math.round(state.width / 2), 1024);
-            canvasRefract.height = Math.min(Math.round(state.height / 2), 1024);
+            // Set helper canvas sizes in logical CSS coordinates to scale down textures
+            canvasRefract.width = Math.min(Math.round(state.width / 2 / dpr), 1024);
+            canvasRefract.height = Math.min(Math.round(state.height / 2 / dpr), 1024);
 
-            canvasReflect.width = Math.min(Math.round(state.width / 4), 512);
-            canvasReflect.height = Math.min(Math.round(state.height / 4), 512);
+            canvasReflect.width = Math.min(Math.round(state.width / 4 / dpr), 512);
+            canvasReflect.height = Math.min(Math.round(state.height / 4 / dpr), 512);
 
-            canvasShadow.width = Math.min(Math.round(state.width / 4), 512);
-            canvasShadow.height = Math.min(Math.round(state.height / 4), 512);
+            canvasShadow.width = Math.min(Math.round(state.width / 4 / dpr), 512);
+            canvasShadow.height = Math.min(Math.round(state.height / 4 / dpr), 512);
+
+            // Force the SVG filter coordinate system to match CSS space
+            const filterEl = document.getElementById('marble-filter');
+            if (filterEl) {
+                filterEl.setAttribute('width', newWidth);
+                filterEl.setAttribute('height', newHeight);
+            }
+
+            // Match the feImage inputs to the CSS bounds
+            const images = ['displaceRefract', 'displaceReflect', 'shadowMap'];
+            images.forEach(id => {
+                const img = document.getElementById(id);
+                if (img) {
+                    img.setAttribute('width', newWidth);
+                    img.setAttribute('height', newHeight);
+                }
+            });
+
+            // Normalize the Displacement Map Scale
+            const displacementScale = 200 * (newWidth / 1920);
+            document.querySelectorAll('feDisplacementMap').forEach(el => {
+                el.setAttribute('scale', displacementScale);
+            });
         }
         window.addEventListener('resize', resize);
         resize();
@@ -715,13 +779,13 @@
                 clickOsc.type = 'triangle';
                 clickOsc.frequency.setValueAtTime(5000, now);
                 clickOsc.frequency.exponentialRampToValueAtTime(80, now + 0.004);
-                
+
                 clickGain.gain.setValueAtTime(0.7, now); // Prominent physical impact tick
                 clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.004);
-                
+
                 clickOsc.connect(clickGain);
                 clickGain.connect(masterGain);
-                
+
                 clickOsc.start(now);
                 clickOsc.stop(now + 0.008);
 
@@ -911,12 +975,13 @@
         }
 
         function renderAndMapPass(destCanvas, destCtx, feImage, mode, type, quality) {
-            gl.uniform2f(u_viewport_size, destCanvas.width, destCanvas.height);
-            gl.viewport(0, 0, destCanvas.width, destCanvas.height);
+            gl.uniform2f(u_viewport_size, canvas.width, canvas.height);
+            gl.viewport(0, 0, canvas.width, canvas.height);
             gl.clear(gl.COLOR_BUFFER_BIT);
             gl.uniform1i(u_mode, mode);
             gl.drawArrays(gl.TRIANGLES, 0, 3);
-            destCtx.drawImage(canvas, 0, canvas.height - destCanvas.height, destCanvas.width, destCanvas.height, 0, 0, destCanvas.width, destCanvas.height);
+            destCtx.clearRect(0, 0, destCanvas.width, destCanvas.height);
+            destCtx.drawImage(canvas, 0, 0, destCanvas.width, destCanvas.height);
             updateFeImageWithCanvas(feImage, destCanvas, type, quality);
         }
 
